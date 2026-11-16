@@ -64,7 +64,7 @@ function toggleHelp() {
     'F5   Recharger\n' +
     'Alt+Gauche / bouton souris Précédent   Retour\n' +
     'Ctrl + / Ctrl -  / Ctrl 0   Zoom\n' +
-    'Pendant une vidéo : Espace lecture/pause, J / L  -10 s / +10 s, M muet\n' +
+    'Pendant une vidéo : Espace lecture/pause, flèches ou J / L  -10 s / +10 s, M muet\n' +
     'Molette : change de ligne ; Maj+molette : défile la ligne\n' +
     'Glisser à la souris : fait défiler\n' +
     'F1   Cette aide';
@@ -72,6 +72,7 @@ function toggleHelp() {
 }
 
 // ---------------------------------------------------------------- Clavier
+const swallowKeyUp = new Set();
 window.addEventListener('keydown', (e) => {
   // La recherche capte tout le clavier tant qu'elle est ouverte.
   if (searchBox) {
@@ -91,15 +92,23 @@ window.addEventListener('keydown', (e) => {
   const v = video();
   let handled = true;
   if (e.key === ' ') v.paused ? v.play() : v.pause();
+  else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !v.paused) {
+    // En lecture : saut direct de 10 s, sans passer par le mode « barre de lecture » de l'interface TV (qui met en pause).
+    v.currentTime = e.key === 'ArrowLeft' ? Math.max(0, v.currentTime - 10) : Math.min(v.duration || Infinity, v.currentTime + 10);
+    swallowKeyUp.add(e.key);
+  }
   else if (e.key === 'j' || e.key === 'J') v.currentTime = Math.max(0, v.currentTime - 10);
   else if (e.key === 'l' || e.key === 'L') v.currentTime = Math.min(v.duration || Infinity, v.currentTime + 10);
   else if (e.key === 'm' || e.key === 'M') v.muted = !v.muted;
   else handled = false;
   if (handled) { e.preventDefault(); e.stopImmediatePropagation(); }
 }, true);
-// Les touches de la recherche ne doivent pas atteindre l'interface YouTube.
+// Les touches de la recherche, et les flèches déjà traitées, ne doivent pas atteindre l'interface YouTube.
 for (const type of ['keyup', 'keypress']) {
-  window.addEventListener(type, (e) => { if (searchBox) e.stopImmediatePropagation(); }, true);
+  window.addEventListener(type, (e) => {
+    if (searchBox) e.stopImmediatePropagation();
+    else if (type === 'keyup' && swallowKeyUp.delete(e.key)) e.stopImmediatePropagation();
+  }, true);
 }
 
 // ---------------------------------------------------------------- Souris
