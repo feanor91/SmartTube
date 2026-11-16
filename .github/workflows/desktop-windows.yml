@@ -1,0 +1,25 @@
+name: Desktop Windows build
+
+on:
+  push:
+    branches: [ 'claude/gifted-mccarthy-0aq2k3' ]
+    paths: [ 'desktop/**', '.github/workflows/desktop-windows.yml' ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SmartTube-Windows
+          path: desktop/dist/SmartTube-*-portable.exe
