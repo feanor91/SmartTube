@@ -115,9 +115,12 @@ for (const type of ['keyup', 'keypress']) {
 function initMouse() {
   // Molette : une seule touche par geste. Maj+molette (ou molette latérale) = horizontal.
   let last = 0;
-  window.addEventListener('wheel', (e) => {
+  const onWheel = (e) => {
     if (!isTv() || videoPlaying() || searchBox) return;
+    // On bloque le défilement natif de l'interface TV : seule notre touche fléchée doit agir.
     e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.type !== 'wheel') return;
     const now = Date.now();
     if (now - last < 250) return;
     const horizontal = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
@@ -125,7 +128,10 @@ function initMouse() {
     if (!d) return;
     sendKey(horizontal ? (d > 0 ? 'Right' : 'Left') : (d > 0 ? 'Down' : 'Up'));
     last = now;
-  }, { passive: false, capture: true });
+  };
+  window.addEventListener('wheel', onWheel, { passive: false, capture: true });
+  window.addEventListener('mousewheel', onWheel, { passive: false, capture: true });
+  window.addEventListener('DOMMouseScroll', onWheel, { passive: false, capture: true });
 
   // Glisser : tirer vers la gauche avance dans la rangée.
   const STEP = 130;
@@ -144,14 +150,20 @@ function initMouse() {
       sendKey(dy < 0 ? 'Down' : 'Up'); down = { x: e.clientX, y: e.clientY }; dragged = true;
     }
   }, true);
+  // Après un glisser, le relâchement du bouton ne doit pas valider la vignette sous le curseur.
+  const swallowIfDragged = (e) => {
+    if (!dragged) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  };
   window.addEventListener('mouseup', (e) => {
     down = null;
-    if (e.button === 3) { e.preventDefault(); history.back(); }
-    else if (e.button === 4) { e.preventDefault(); history.forward(); }
+    if (e.button === 3) { e.preventDefault(); history.back(); return; }
+    if (e.button === 4) { e.preventDefault(); history.forward(); return; }
+    swallowIfDragged(e);
+    setTimeout(() => { dragged = false; }, 80);
   }, true);
-  window.addEventListener('click', (e) => {
-    if (dragged) { e.stopPropagation(); e.preventDefault(); dragged = false; }
-  }, true);
+  for (const type of ['pointerup', 'click', 'auxclick']) window.addEventListener(type, swallowIfDragged, true);
 
   // Double-clic : plein écran quand une vidéo est en cours.
   window.addEventListener('dblclick', () => { if (onWatchPage()) ipcRenderer.send('st-fullscreen'); }, true);
