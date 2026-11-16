@@ -24,16 +24,17 @@ const stateFile = () => path.join(app.getPath('userData'), 'window-state.json');
 function loadState() {
   try { return JSON.parse(fs.readFileSync(stateFile(), 'utf8')); } catch (_) { return {}; }
 }
-function saveState(win, mode) {
+function saveState(win, mode, zoom) {
   try {
     const b = win.getNormalBounds();
-    fs.writeFileSync(stateFile(), JSON.stringify({ ...b, maximized: win.isMaximized(), mode }));
+    fs.writeFileSync(stateFile(), JSON.stringify({ ...b, maximized: win.isMaximized(), mode, zoom }));
   } catch (_) {}
 }
 
 function createWindow() {
   const st = loadState();
   let mode = MODES[st.mode] ? st.mode : 'tv';
+  let zoom = typeof st.zoom === 'number' ? st.zoom : 0;
 
   const win = new BrowserWindow({
     width: st.width || 1280,
@@ -83,7 +84,8 @@ function createWindow() {
     } catch (_) {}
   });
 
-  win.on('close', () => saveState(win, mode));
+  win.on('close', () => saveState(win, mode, zoom));
+  win.webContents.on('did-finish-load', () => win.webContents.setZoomLevel(zoom));
 
   // Raccourcis actifs uniquement quand la fenêtre a le focus.
   win.webContents.on('before-input-event', (event, input) => {
@@ -92,6 +94,10 @@ function createWindow() {
     if (input.key === 'F11') win.setFullScreen(!win.isFullScreen());
     else if (input.key === 'F5') win.webContents.reload();
     else if (input.key === 'F2') { mode = mode === 'desktop' ? 'tv' : 'desktop'; open(); }
+    else if (input.control && ['=', '+', '-', '0'].includes(input.key)) {
+      zoom = input.key === '0' ? 0 : Math.max(-3, Math.min(5, zoom + (input.key === '-' ? -0.5 : 0.5)));
+      win.webContents.setZoomLevel(zoom);
+    }
     else if (input.alt && input.key === 'ArrowLeft') { if (nav.canGoBack()) nav.goBack(); }
     else return;
     event.preventDefault();
@@ -108,7 +114,21 @@ ipcMain.on('st-key', (e, key) => {
   e.sender.sendInputEvent({ type: 'keyUp', keyCode: key });
 });
 
+ipcMain.on('st-fullscreen', (e) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  if (w) w.setFullScreen(!w.isFullScreen());
+});
+
+// Une seule instance : relancer l'application ramène la fenêtre existante.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
+app.on('second-instance', () => {
+  const w = BrowserWindow.getAllWindows()[0];
+  if (w) { if (w.isMinimized()) w.restore(); w.focus(); }
+});
+
 app.whenReady().then(() => {
+  if (!gotLock) return;
   session.defaultSession.webRequest.onBeforeRequest({ urls: AD_PATTERNS }, (_d, cb) => cb({ cancel: true }));
   createWindow();
   app.on('activate', () => {

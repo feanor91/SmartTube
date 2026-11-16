@@ -1,7 +1,204 @@
-// Injecté dans la page YouTube : masque/saute les publicités et saute les segments SponsorBlock.
+// Injecté dans la page YouTube : confort souris/clavier, recherche au clavier,
+// saut des publicités et des segments SponsorBlock.
+const { ipcRenderer } = require('electron');
+
 const SB_API = 'https://sponsor.ajay.app/api/skipSegments';
 const CATEGORIES = ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro'];
 
+const sendKey = (k) => ipcRenderer.send('st-key', k);
+const isTv = () => /^\/tv/.test(location.pathname);
+const video = () => document.querySelector('video');
+const videoPlaying = () => { const v = video(); return !!v && !v.paused; };
+const onWatchPage = () => /watch/.test(location.pathname + location.hash) && !!video();
+const isTyping = (t) => t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+
+// ---------------------------------------------------------------- Recherche au clavier
+let searchBox = null;
+let searchSuppressed = false;
+
+function closeSearch(suppress) {
+  if (searchBox) searchBox.remove();
+  searchBox = null;
+  if (suppress) searchSuppressed = true;
+}
+
+function goSearch(q) {
+  q = q.trim();
+  closeSearch(false);
+  if (!q) return;
+  if (isTv()) location.href = 'https://www.youtube.com/tv#/search?q=' + encodeURIComponent(q);
+  else location.href = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q);
+}
+
+function openSearch() {
+  if (searchBox) { searchBox.querySelector('input').focus(); return; }
+  searchBox = document.createElement('div');
+  searchBox.style.cssText =
+    'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.7);display:flex;' +
+    'align-items:flex-start;justify-content:center;padding-top:12vh;';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Rechercher sur YouTube (Entrée = valider, Échap = fermer)';
+  input.style.cssText =
+    'width:min(900px,86vw);font-size:28px;padding:16px 24px;border-radius:40px;border:2px solid #00a0aa;' +
+    'background:#1c1c1c;color:#fff;outline:none;';
+  searchBox.appendChild(input);
+  searchBox.addEventListener('mousedown', (e) => { if (e.target === searchBox) closeSearch(true); });
+  document.documentElement.appendChild(searchBox);
+  input.focus();
+}
+
+// ---------------------------------------------------------------- Aide
+let helpBox = null;
+function toggleHelp() {
+  if (helpBox) { helpBox.remove(); helpBox = null; return; }
+  helpBox = document.createElement('div');
+  helpBox.style.cssText =
+    'position:fixed;top:60px;left:12px;z-index:2147483646;background:rgba(0,0,0,.88);color:#fff;' +
+    'padding:16px 22px;border-radius:12px;font:15px/1.7 sans-serif;white-space:pre;';
+  helpBox.textContent =
+    'Raccourcis SmartTube\n' +
+    '/  ou  Ctrl+K   Rechercher\n' +
+    'F11 / double-clic   Plein écran\n' +
+    'F2   Mode TV  <->  site classique\n' +
+    'F5   Recharger\n' +
+    'Alt+Gauche / bouton souris Précédent   Retour\n' +
+    'Ctrl + / Ctrl -  / Ctrl 0   Zoom\n' +
+    'Pendant une vidéo : Espace lecture/pause, J / L  -10 s / +10 s, M muet\n' +
+    'Molette : change de ligne ; Maj+molette : défile la ligne\n' +
+    'Glisser à la souris : fait défiler\n' +
+    'F1   Cette aide';
+  document.documentElement.appendChild(helpBox);
+}
+
+// ---------------------------------------------------------------- Clavier
+window.addEventListener('keydown', (e) => {
+  // La recherche capte tout le clavier tant qu'elle est ouverte.
+  if (searchBox) {
+    e.stopImmediatePropagation();
+    if (e.key === 'Enter') { e.preventDefault(); goSearch(searchBox.querySelector('input').value); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeSearch(true); }
+    return;
+  }
+  if (isTyping(e.target)) return;
+
+  if ((e.key === '/' && !e.ctrlKey) || (e.ctrlKey && (e.key === 'k' || e.key === 'f'))) {
+    e.preventDefault(); e.stopImmediatePropagation(); openSearch(); return;
+  }
+  if (e.key === 'F1') { e.preventDefault(); toggleHelp(); return; }
+  if (e.ctrlKey || e.altKey || e.metaKey || !onWatchPage()) return;
+
+  const v = video();
+  let handled = true;
+  if (e.key === ' ') v.paused ? v.play() : v.pause();
+  else if (e.key === 'j' || e.key === 'J') v.currentTime = Math.max(0, v.currentTime - 10);
+  else if (e.key === 'l' || e.key === 'L') v.currentTime = Math.min(v.duration || Infinity, v.currentTime + 10);
+  else if (e.key === 'm' || e.key === 'M') v.muted = !v.muted;
+  else handled = false;
+  if (handled) { e.preventDefault(); e.stopImmediatePropagation(); }
+}, true);
+// Les touches de la recherche ne doivent pas atteindre l'interface YouTube.
+for (const type of ['keyup', 'keypress']) {
+  window.addEventListener(type, (e) => { if (searchBox) e.stopImmediatePropagation(); }, true);
+}
+
+// ---------------------------------------------------------------- Souris
+function initMouse() {
+  // Molette : une seule touche par geste. Maj+molette (ou molette latérale) = horizontal.
+  let last = 0;
+  window.addEventListener('wheel', (e) => {
+    if (!isTv() || videoPlaying() || searchBox) return;
+    e.preventDefault();
+    const now = Date.now();
+    if (now - last < 250) return;
+    const horizontal = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
+    const d = horizontal ? (e.deltaX || e.deltaY) : e.deltaY;
+    if (!d) return;
+    sendKey(horizontal ? (d > 0 ? 'Right' : 'Left') : (d > 0 ? 'Down' : 'Up'));
+    last = now;
+  }, { passive: false, capture: true });
+
+  // Glisser : tirer vers la gauche avance dans la rangée.
+  const STEP = 130;
+  let down = null, dragged = false;
+  window.addEventListener('mousedown', (e) => {
+    if (!isTv() || e.button !== 0) return;
+    down = { x: e.clientX, y: e.clientY };
+    dragged = false;
+  }, true);
+  window.addEventListener('mousemove', (e) => {
+    if (!down) return;
+    const dx = e.clientX - down.x, dy = e.clientY - down.y;
+    if (Math.abs(dx) >= STEP && Math.abs(dx) >= Math.abs(dy)) {
+      sendKey(dx < 0 ? 'Right' : 'Left'); down = { x: e.clientX, y: e.clientY }; dragged = true;
+    } else if (Math.abs(dy) >= STEP) {
+      sendKey(dy < 0 ? 'Down' : 'Up'); down = { x: e.clientX, y: e.clientY }; dragged = true;
+    }
+  }, true);
+  window.addEventListener('mouseup', (e) => {
+    down = null;
+    if (e.button === 3) { e.preventDefault(); history.back(); }
+    else if (e.button === 4) { e.preventDefault(); history.forward(); }
+  }, true);
+  window.addEventListener('click', (e) => {
+    if (dragged) { e.stopPropagation(); e.preventDefault(); dragged = false; }
+  }, true);
+
+  // Double-clic : plein écran quand une vidéo est en cours.
+  window.addEventListener('dblclick', () => { if (onWatchPage()) ipcRenderer.send('st-fullscreen'); }, true);
+}
+
+// ---------------------------------------------------------------- Boutons Retour / Accueil / Recherche
+function addNavButtons() {
+  if (document.getElementById('st-nav')) return;
+  const box = document.createElement('div');
+  box.id = 'st-nav';
+  box.style.cssText =
+    'position:fixed;top:12px;left:12px;z-index:2147483645;display:flex;gap:8px;opacity:0;' +
+    'transition:opacity .25s;pointer-events:none;';
+  const mk = (label, title, fn) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.title = title;
+    b.style.cssText =
+      'width:44px;height:44px;border:0;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;' +
+      'font-size:22px;cursor:pointer;pointer-events:auto;';
+    b.onmouseenter = () => (b.style.background = 'rgba(0,150,160,.9)');
+    b.onmouseleave = () => (b.style.background = 'rgba(0,0,0,.65)');
+    b.onclick = fn;
+    return b;
+  };
+  box.append(
+    mk('←', 'Retour', () => history.back()),
+    mk('⌂', 'Accueil', () => {
+      location.href = isTv() ? 'https://www.youtube.com/tv' : 'https://www.youtube.com/';
+    }),
+    mk('⌕', 'Rechercher (/)', () => openSearch()),
+    mk('?', 'Aide (F1)', () => toggleHelp())
+  );
+  document.documentElement.appendChild(box);
+  let timer;
+  window.addEventListener('mousemove', () => {
+    box.style.opacity = '1';
+    clearTimeout(timer);
+    timer = setTimeout(() => (box.style.opacity = '0'), 3000);
+  });
+}
+
+// ---------------------------------------------------------------- Publicités
+window.addEventListener('DOMContentLoaded', () => {
+  addNavButtons();
+  initMouse();
+  const style = document.createElement('style');
+  style.textContent = `
+    ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer, ytd-banner-promo-renderer,
+    ytd-statement-banner-renderer, ytd-promoted-sparkles-web-renderer, ytd-display-ad-renderer,
+    ytd-companion-slot-renderer, #masthead-ad, #player-ads, .ytp-ad-overlay-container,
+    .ytp-ad-module { display: none !important; }`;
+  document.documentElement.appendChild(style);
+});
+
+// ---------------------------------------------------------------- SponsorBlock
 let currentId = null;
 let segments = [];
 
@@ -19,126 +216,42 @@ async function loadSegments(id) {
   } catch (_) { /* hors ligne ou aucune donnée */ }
 }
 
-// Souris -> flèches du clavier, pour faire défiler l'interface TV à la molette ou en glissant.
-const { ipcRenderer } = require('electron');
-const sendKey = (k) => ipcRenderer.send('st-key', k);
-const isTv = () => /^\/tv/.test(location.pathname);
-const videoPlaying = () => { const v = document.querySelector('video'); return v && !v.paused; };
-
-function initMouseNavigation() {
-  // Molette : une touche par cran, en limitant la cadence.
-  let accX = 0, accY = 0, last = 0;
-  window.addEventListener('wheel', (e) => {
-    if (!isTv() || videoPlaying()) return;
-    e.preventDefault();
-    accX += e.deltaX + (e.shiftKey ? e.deltaY : 0);
-    accY += e.shiftKey ? 0 : e.deltaY;
-    const now = Date.now();
-    if (now - last < 90) return;
-    if (Math.abs(accY) >= 40) { sendKey(accY > 0 ? 'Down' : 'Up'); accY = 0; last = now; }
-    else if (Math.abs(accX) >= 40) { sendKey(accX > 0 ? 'Right' : 'Left'); accX = 0; last = now; }
-  }, { passive: false });
-
-  // Glisser : faire glisser vers la gauche avance dans la liste (comme sur un écran tactile).
-  const STEP = 110;
-  let down = null, dragged = false;
-  window.addEventListener('mousedown', (e) => {
-    if (!isTv() || e.button !== 0) return;
-    down = { x: e.clientX, y: e.clientY };
-    dragged = false;
-  }, true);
-  window.addEventListener('mousemove', (e) => {
-    if (!down) return;
-    const dx = e.clientX - down.x, dy = e.clientY - down.y;
-    if (Math.abs(dx) >= STEP && Math.abs(dx) >= Math.abs(dy)) {
-      sendKey(dx < 0 ? 'Right' : 'Left'); down.x = e.clientX; down.y = e.clientY; dragged = true;
-    } else if (Math.abs(dy) >= STEP) {
-      sendKey(dy < 0 ? 'Down' : 'Up'); down.x = e.clientX; down.y = e.clientY; dragged = true;
-    }
-  }, true);
-  window.addEventListener('mouseup', () => { down = null; }, true);
-  // Un glisser ne doit pas être pris pour un clic sur une vignette.
-  window.addEventListener('click', (e) => {
-    if (dragged) { e.stopPropagation(); e.preventDefault(); dragged = false; }
-  }, true);
-}
-
-// Boutons Retour / Accueil, visibles quand la souris bouge.
-function addNavButtons() {
-  if (document.getElementById('st-nav')) return;
-  const box = document.createElement('div');
-  box.id = 'st-nav';
-  box.style.cssText =
-    'position:fixed;top:12px;left:12px;z-index:2147483647;display:flex;gap:8px;opacity:0;' +
-    'transition:opacity .25s;pointer-events:none;';
-  const mk = (label, title, fn) => {
-    const b = document.createElement('button');
-    b.textContent = label;
-    b.title = title;
-    b.style.cssText =
-      'width:44px;height:44px;border:0;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;' +
-      'font-size:24px;cursor:pointer;pointer-events:auto;';
-    b.onmouseenter = () => (b.style.background = 'rgba(0,150,160,.9)');
-    b.onmouseleave = () => (b.style.background = 'rgba(0,0,0,.65)');
-    b.onclick = fn;
-    return b;
-  };
-  box.append(
-    mk('\u2190', 'Retour', () => history.back()),
-    mk('\u2302', 'Accueil', () => {
-      location.href = /\/tv/.test(location.pathname) ? 'https://www.youtube.com/tv' : 'https://www.youtube.com/';
-    })
-  );
-  document.documentElement.appendChild(box);
-  let timer;
-  window.addEventListener('mousemove', () => {
-    box.style.opacity = '1';
-    clearTimeout(timer);
-    timer = setTimeout(() => (box.style.opacity = '0'), 3000);
-  });
-}
-
-// Masque les emplacements publicitaires du site classique.
-window.addEventListener('DOMContentLoaded', () => {
-  addNavButtons();
-  initMouseNavigation();
-  const style = document.createElement('style');
-  style.textContent = `
-    ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer, ytd-banner-promo-renderer,
-    ytd-statement-banner-renderer, ytd-promoted-sparkles-web-renderer, ytd-display-ad-renderer,
-    ytd-companion-slot-renderer, #masthead-ad, #player-ads, .ytp-ad-overlay-container,
-    .ytp-ad-module { display: none !important; }`;
-  document.documentElement.appendChild(style);
-});
-
-// Enquêtes publicitaires et autres écrans à ignorer : clic automatique sur « Ignorer / Skip ».
+// Analyse de la page (1 fois par seconde) : enquêtes publicitaires et clavier virtuel TV.
 const SKIP_TEXT = /^(ignorer l.enqu[eê]te|ignorer|passer l.enqu[eê]te|skip survey|skip)$/i;
-function dismissSurvey() {
-  const page = document.body && document.body.innerText;
-  if (!page || !/(enqu[eê]te sur un annonceur|advertiser survey|survey)/i.test(page)) return;
-  const nodes = document.querySelectorAll('ytlr-button, ytlr-button-renderer, ytlr-skip-button-renderer, button, [role="button"]');
-  for (const n of nodes) {
-    if (SKIP_TEXT.test((n.innerText || n.textContent || '').trim())) {
-      n.focus && n.focus();
-      n.click();
-      n.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-      n.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-      return;
+function scanPage() {
+  const text = document.body && document.body.innerText;
+  if (!text) return;
+
+  // Clavier virtuel de la recherche TV -> on ouvre la saisie au clavier à la place.
+  const keyboard = /(ESPACE|SPACE)[\s\S]*(EFFACER|CLEAR)[\s\S]*(RECHERCHER|SEARCH)/.test(text) && /\bA\b[\s\S]*\bB\b[\s\S]*\bC\b/.test(text);
+  if (keyboard) { if (!searchBox && !searchSuppressed) openSearch(); }
+  else searchSuppressed = false;
+
+  // Enquête publicitaire.
+  if (/(enqu[eê]te sur un annonceur|advertiser survey)/i.test(text)) {
+    const nodes = document.querySelectorAll('ytlr-button, ytlr-button-renderer, ytlr-skip-button-renderer, button, [role="button"]');
+    for (const n of nodes) {
+      if (SKIP_TEXT.test((n.innerText || n.textContent || '').trim())) {
+        n.focus && n.focus();
+        n.click();
+        n.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+        n.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+        return;
+      }
     }
   }
 }
 
 function tick() {
-  dismissSurvey();
-  const video = document.querySelector('video');
-  if (!video) return;
+  const v = video();
+  if (!v) return;
 
   const adShowing = document.querySelector(
     '.ad-showing, .ytp-ad-player-overlay, .ytlr-ad-player-overlay-renderer, [class*="ad-interrupting"]'
   );
-  if (adShowing && isFinite(video.duration) && video.duration > 0) {
-    video.muted = true;
-    video.currentTime = video.duration;
+  if (adShowing && isFinite(v.duration) && v.duration > 0) {
+    v.muted = true;
+    v.currentTime = v.duration;
     const skip = document.querySelector(
       '.ytp-skip-ad-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button, [class*="skip-button"]'
     );
@@ -152,13 +265,14 @@ function tick() {
     segments = [];
     if (id) loadSegments(id);
   }
-  const t = video.currentTime;
+  const t = v.currentTime;
   for (const [start, end] of segments) {
     if (t >= start && t < end - 0.3) {
-      video.currentTime = end;
+      v.currentTime = end;
       break;
     }
   }
 }
 
 setInterval(tick, 500);
+setInterval(scanPage, 1000);
