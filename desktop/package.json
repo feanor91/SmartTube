@@ -1,0 +1,26 @@
+{
+  "name": "smarttube-desktop",
+  "version": "0.1.0",
+  "description": "SmartTube pour Windows : client YouTube TV sans publicité avec SponsorBlock",
+  "main": "main.js",
+  "author": "SmartTube Desktop",
+  "license": "GPL-3.0",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable --x64"
+  },
+  "build": {
+    "appId": "app.smarttube.desktop",
+    "productName": "SmartTube",
+    "win": {
+      "target": ["portable"],
+      "signAndEditExecutable": false
+    },
+    "portable": { "artifactName": "SmartTube-${version}-portable.exe" },
+    "files": ["main.js", "preload.js", "package.json"]
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  }
+}
