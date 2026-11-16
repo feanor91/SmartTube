@@ -1,6 +1,6 @@
 {
   "name": "smarttube-desktop",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "SmartTube pour Windows : client YouTube TV sans publicité avec SponsorBlock",
   "main": "main.js",
   "author": "SmartTube Desktop",

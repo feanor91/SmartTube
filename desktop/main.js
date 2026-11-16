@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, shell, globalShortcut } = require('electron');
+const { app, BrowserWindow, session, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -87,13 +87,17 @@ function createWindow() {
 
   win.on('close', () => saveState(win, mode));
 
-  globalShortcut.register('F11', () => win.setFullScreen(!win.isFullScreen()));
-  globalShortcut.register('F5', () => win.webContents.reload());
-  globalShortcut.register('F2', () => {
-    mode = mode === 'desktop' ? 'tv' : 'desktop';
-    open();
+  // Raccourcis actifs uniquement quand la fenêtre a le focus.
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const nav = win.webContents.navigationHistory;
+    if (input.key === 'F11') win.setFullScreen(!win.isFullScreen());
+    else if (input.key === 'F5') win.webContents.reload();
+    else if (input.key === 'F2') { mode = mode === 'desktop' ? 'tv' : 'desktop'; open(); }
+    else if (input.alt && input.key === 'ArrowLeft') { if (nav.canGoBack()) nav.goBack(); }
+    else return;
+    event.preventDefault();
   });
-  globalShortcut.register('Alt+Left', () => win.webContents.navigationHistory.canGoBack() && win.webContents.navigationHistory.goBack());
 
   open();
   return win;
@@ -107,5 +111,4 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('will-quit', () => globalShortcut.unregisterAll());
 app.on('window-all-closed', () => app.quit());

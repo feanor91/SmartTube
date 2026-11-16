@@ -19,8 +19,44 @@ async function loadSegments(id) {
   } catch (_) { /* hors ligne ou aucune donnée */ }
 }
 
+// Boutons Retour / Accueil, visibles quand la souris bouge.
+function addNavButtons() {
+  if (document.getElementById('st-nav')) return;
+  const box = document.createElement('div');
+  box.id = 'st-nav';
+  box.style.cssText =
+    'position:fixed;top:12px;left:12px;z-index:2147483647;display:flex;gap:8px;opacity:0;' +
+    'transition:opacity .25s;pointer-events:none;';
+  const mk = (label, title, fn) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.title = title;
+    b.style.cssText =
+      'width:44px;height:44px;border:0;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;' +
+      'font-size:24px;cursor:pointer;pointer-events:auto;';
+    b.onmouseenter = () => (b.style.background = 'rgba(0,150,160,.9)');
+    b.onmouseleave = () => (b.style.background = 'rgba(0,0,0,.65)');
+    b.onclick = fn;
+    return b;
+  };
+  box.append(
+    mk('\u2190', 'Retour', () => history.back()),
+    mk('\u2302', 'Accueil', () => {
+      location.href = /\/tv/.test(location.pathname) ? 'https://www.youtube.com/tv' : 'https://www.youtube.com/';
+    })
+  );
+  document.documentElement.appendChild(box);
+  let timer;
+  window.addEventListener('mousemove', () => {
+    box.style.opacity = '1';
+    clearTimeout(timer);
+    timer = setTimeout(() => (box.style.opacity = '0'), 3000);
+  });
+}
+
 // Masque les emplacements publicitaires du site classique.
 window.addEventListener('DOMContentLoaded', () => {
+  addNavButtons();
   const style = document.createElement('style');
   style.textContent = `
     ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer, ytd-banner-promo-renderer,
