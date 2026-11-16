@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, shell } = require('electron');
+const { app, BrowserWindow, session, shell, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -100,6 +100,13 @@ function createWindow() {
   open();
   return win;
 }
+
+// La page demande l'envoi d'une touche fléchée (molette / glisser à la souris -> navigation TV).
+ipcMain.on('st-key', (e, key) => {
+  if (!['Left', 'Right', 'Up', 'Down'].includes(key)) return;
+  e.sender.sendInputEvent({ type: 'keyDown', keyCode: key });
+  e.sender.sendInputEvent({ type: 'keyUp', keyCode: key });
+});
 
 app.whenReady().then(() => {
   session.defaultSession.webRequest.onBeforeRequest({ urls: AD_PATTERNS }, (_d, cb) => cb({ cancel: true }));

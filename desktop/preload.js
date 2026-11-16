@@ -19,6 +19,50 @@ async function loadSegments(id) {
   } catch (_) { /* hors ligne ou aucune donnée */ }
 }
 
+// Souris -> flèches du clavier, pour faire défiler l'interface TV à la molette ou en glissant.
+const { ipcRenderer } = require('electron');
+const sendKey = (k) => ipcRenderer.send('st-key', k);
+const isTv = () => /^\/tv/.test(location.pathname);
+const videoPlaying = () => { const v = document.querySelector('video'); return v && !v.paused; };
+
+function initMouseNavigation() {
+  // Molette : une touche par cran, en limitant la cadence.
+  let accX = 0, accY = 0, last = 0;
+  window.addEventListener('wheel', (e) => {
+    if (!isTv() || videoPlaying()) return;
+    e.preventDefault();
+    accX += e.deltaX + (e.shiftKey ? e.deltaY : 0);
+    accY += e.shiftKey ? 0 : e.deltaY;
+    const now = Date.now();
+    if (now - last < 90) return;
+    if (Math.abs(accY) >= 40) { sendKey(accY > 0 ? 'Down' : 'Up'); accY = 0; last = now; }
+    else if (Math.abs(accX) >= 40) { sendKey(accX > 0 ? 'Right' : 'Left'); accX = 0; last = now; }
+  }, { passive: false });
+
+  // Glisser : faire glisser vers la gauche avance dans la liste (comme sur un écran tactile).
+  const STEP = 110;
+  let down = null, dragged = false;
+  window.addEventListener('mousedown', (e) => {
+    if (!isTv() || e.button !== 0) return;
+    down = { x: e.clientX, y: e.clientY };
+    dragged = false;
+  }, true);
+  window.addEventListener('mousemove', (e) => {
+    if (!down) return;
+    const dx = e.clientX - down.x, dy = e.clientY - down.y;
+    if (Math.abs(dx) >= STEP && Math.abs(dx) >= Math.abs(dy)) {
+      sendKey(dx < 0 ? 'Right' : 'Left'); down.x = e.clientX; down.y = e.clientY; dragged = true;
+    } else if (Math.abs(dy) >= STEP) {
+      sendKey(dy < 0 ? 'Down' : 'Up'); down.x = e.clientX; down.y = e.clientY; dragged = true;
+    }
+  }, true);
+  window.addEventListener('mouseup', () => { down = null; }, true);
+  // Un glisser ne doit pas être pris pour un clic sur une vignette.
+  window.addEventListener('click', (e) => {
+    if (dragged) { e.stopPropagation(); e.preventDefault(); dragged = false; }
+  }, true);
+}
+
 // Boutons Retour / Accueil, visibles quand la souris bouge.
 function addNavButtons() {
   if (document.getElementById('st-nav')) return;
@@ -57,6 +101,7 @@ function addNavButtons() {
 // Masque les emplacements publicitaires du site classique.
 window.addEventListener('DOMContentLoaded', () => {
   addNavButtons();
+  initMouseNavigation();
   const style = document.createElement('style');
   style.textContent = `
     ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer, ytd-banner-promo-renderer,
