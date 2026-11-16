@@ -7,17 +7,23 @@
   "license": "GPL-3.0",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win portable --x64"
+    "dist": "electron-builder --win zip --x64"
   },
   "build": {
     "appId": "app.smarttube.desktop",
     "productName": "SmartTube",
     "win": {
-      "target": ["portable"],
-      "signAndEditExecutable": false
+      "target": [
+        "zip"
+      ],
+      "signAndEditExecutable": false,
+      "artifactName": "SmartTube-${version}-win.${ext}"
     },
-    "portable": { "artifactName": "SmartTube-${version}-portable.exe" },
-    "files": ["main.js", "preload.js", "package.json"]
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ]
   },
   "devDependencies": {
     "electron": "^33.0.0",

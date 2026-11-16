@@ -6,6 +6,9 @@ on:
     paths: [ 'desktop/**', '.github/workflows/desktop-windows.yml' ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -22,4 +25,15 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: SmartTube-Windows
-          path: desktop/dist/SmartTube-*-portable.exe
+          path: desktop/dist/SmartTube-*-win.zip
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release delete "desktop-v$VERSION" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create "desktop-v$VERSION" dist/SmartTube-*-win.zip \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "SmartTube Desktop $VERSION (Windows)" \
+            --notes "Version Windows (Electron). Téléchargez le zip, extrayez-le entièrement, puis lancez SmartTube.exe."
