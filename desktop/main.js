@@ -13,13 +13,11 @@ const MODES = {
   tv: { url: 'https://www.youtube.com/tv', ua: TV_UA }
 };
 
+// Seuls les domaines publicitaires tiers sont bloqués : bloquer les pings youtube.com
+// empêche YouTube de valider les pubs/enquêtes, qui reviennent alors à chaque vidéo.
 const AD_PATTERNS = [
   '*://*.doubleclick.net/*',
-  '*://*.googlesyndication.com/*',
-  '*://*.youtube.com/api/stats/ads*',
-  '*://*.youtube.com/pagead/*',
-  '*://*.youtube.com/get_midroll_info*',
-  '*://*.youtube.com/ptracking*'
+  '*://*.googlesyndication.com/*'
 ];
 
 const stateFile = () => path.join(app.getPath('userData'), 'window-state.json');

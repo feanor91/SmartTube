@@ -66,7 +66,25 @@ window.addEventListener('DOMContentLoaded', () => {
   document.documentElement.appendChild(style);
 });
 
+// Enquêtes publicitaires et autres écrans à ignorer : clic automatique sur « Ignorer / Skip ».
+const SKIP_TEXT = /^(ignorer l.enqu[eê]te|ignorer|passer l.enqu[eê]te|skip survey|skip)$/i;
+function dismissSurvey() {
+  const page = document.body && document.body.innerText;
+  if (!page || !/(enqu[eê]te sur un annonceur|advertiser survey|survey)/i.test(page)) return;
+  const nodes = document.querySelectorAll('ytlr-button, ytlr-button-renderer, ytlr-skip-button-renderer, button, [role="button"]');
+  for (const n of nodes) {
+    if (SKIP_TEXT.test((n.innerText || n.textContent || '').trim())) {
+      n.focus && n.focus();
+      n.click();
+      n.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      n.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      return;
+    }
+  }
+}
+
 function tick() {
+  dismissSurvey();
   const video = document.querySelector('video');
   if (!video) return;
 
