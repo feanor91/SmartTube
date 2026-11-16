@@ -35,7 +35,7 @@ function saveState(win, mode) {
 
 function createWindow() {
   const st = loadState();
-  let mode = MODES[st.mode] ? st.mode : 'desktop';
+  let mode = MODES[st.mode] ? st.mode : 'tv';
 
   const win = new BrowserWindow({
     width: st.width || 1280,
@@ -71,6 +71,18 @@ function createWindow() {
       shell.openExternal(url);
     }
     return { action: 'deny' };
+  });
+
+  // Google bloque la connexion dans une application de bureau : on passe en mode TV,
+  // où la connexion se fait avec un code à saisir sur google.com/device (méthode officielle).
+  win.webContents.on('did-start-navigation', (_e, url, _inPlace, isMainFrame) => {
+    if (!isMainFrame || mode !== 'desktop') return;
+    try {
+      if (new URL(url).hostname === 'accounts.google.com') {
+        mode = 'tv';
+        setImmediate(open);
+      }
+    } catch (_) {}
   });
 
   win.on('close', () => saveState(win, mode));
